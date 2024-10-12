@@ -2,6 +2,7 @@
 using LLGUI;
 using LLHandlers;
 using LLScreen;
+using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -113,6 +114,8 @@ namespace StageSelect
 
             __instance.btRight.visible = false;
             __instance.btLeft.visible = false;
+
+            stageHasBeenSelected = false;
         }
 
         static TMP_Text MakeNewTextFromlbTitle(TMP_Text copyThis, Transform parentTf, Vector3 position)
@@ -157,11 +160,17 @@ namespace StageSelect
             llButton.name = llButton.name + "_" + (-1).ToString();
             llButton.onClick = delegate (int playerNr)
             {
+                instance.curIndex = 0;
                 instance.SelectStage(playerNr, -1);
             };
 
             llButton.onHover = delegate (int playerNr)
             {
+                if (stageHasBeenSelected == true)
+                {
+                    return;
+                }
+
                 foreach (var stageButton in stageButtons3D)
                 {
                     stageButton.gameObject.SetActive(true);
@@ -175,6 +184,7 @@ namespace StageSelect
 
             RectTransform btnRectTransform3D = llButton.GetComponent<RectTransform>();
             btnRectTransform3D.anchoredPosition = new Vector2(posX, posY);
+            llButton.posDefault = btnRectTransform3D.anchoredPosition;
             btnRectTransform3D.localScale = SCALE_FACTOR * Vector3.one;
             posY -= SIZE_Y + SPACING;
 
@@ -187,11 +197,17 @@ namespace StageSelect
             llButton.name = llButton.name + "_" + (-2).ToString();
             llButton.onClick = delegate (int playerNr)
             {
+                instance.curIndex = 1;
                 instance.SelectStage(playerNr, -2);
             };
 
             llButton.onHover = delegate (int playerNr)
             {
+                if (stageHasBeenSelected == true)
+                {
+                    return;
+                }
+
                 foreach (var stageButton in stageButtons3D)
                 {
                     stageButton.gameObject.SetActive(false);
@@ -205,6 +221,7 @@ namespace StageSelect
 
             RectTransform btnRectTransform = llButton.GetComponent<RectTransform>();
             btnRectTransform.anchoredPosition = new Vector2(posX, posY);
+            llButton.posDefault = btnRectTransform.anchoredPosition;
             btnRectTransform.localScale = SCALE_FACTOR * Vector3.one;
 
             instance.btStages[1] = llButton;
@@ -217,6 +234,7 @@ namespace StageSelect
             for (int i = 0; i < stageList.Count; i++)
             {
                 count++;
+                int offset = i + 2;
 
                 sprite = JPLELOFJOOH.BNFIDCAPPDK("_spritePreview" + stageList[i]);
                 LLButton llbutton = LLButton.CreateImageButton(instance.stageButtonsContainer, sprite, new Color(0.6f, 0.6f, 0.6f, 1f), Color.white);
@@ -230,6 +248,7 @@ namespace StageSelect
                     llbutton2.name = llbutton2.name + "_" + stage_selection.ToString();
                     llbutton.onClick = delegate (int playerNr)
                     {
+                        instance.curIndex = offset;
                         instance.SelectStage(playerNr, stage_selection);
                     };
 
@@ -241,6 +260,8 @@ namespace StageSelect
 
                     llbutton.onHoverOut = delegate (int playerNr)
                     {
+                        if (stageHasBeenSelected == true) return;
+
                         TextHandler.SetText(lbStageName, "");
                         TextHandler.SetText(lbStageSize, "");
                     };
@@ -266,6 +287,7 @@ namespace StageSelect
 
                 RectTransform comp = llbutton.GetComponent<RectTransform>();
                 comp.anchoredPosition = new Vector2(posX, posY);
+                llbutton.posDefault = comp.anchoredPosition;
                 comp.localScale = SCALE_FACTOR * Vector3.one;
                 if (count >= 5)
                 {
@@ -285,7 +307,6 @@ namespace StageSelect
                     posX += SIZE_X + SPACING;
                 }
 
-                int offset = i + 2;
                 if (i <= 9)
                 {
                     stageButtons3D.Add(llbutton);
@@ -357,6 +378,11 @@ namespace StageSelect
         [HarmonyPrefix]
         static bool GetControls(ref List<LLClickable> list, bool vert, LLClickable curFocus, LLCursor cursor, ScreenPlayersStage __instance)
         {
+            if (stageHasBeenSelected == true)
+            {
+                return false;
+            }
+
             if (curFocus == null)
             {
                 int num = __instance.curIndex < 12 ? 0 : 1;
@@ -397,6 +423,12 @@ namespace StageSelect
         [HarmonyPrefix]
         static bool DirectMove(ref Vector2 move, LLClickable curFocus, bool shouldMove, ScreenPlayersStage __instance, ref bool __result)
         {
+            if (stageHasBeenSelected == true)
+            {
+                __result = true;
+                return false;
+            }
+
             bool notActive = curFocus == null;
             bool onRandom = (curFocus == stageButtonsRND[0] || curFocus == stageButtonsRND[1]);
             bool goToRandom3D = __instance.curIndex == 2 && move.x < 0 || __instance.curIndex == 6 && move.x > 0 || __instance.curIndex == 12 && move.x < 0 || __instance.curIndex == 16 && move.x > 0;
@@ -407,6 +439,7 @@ namespace StageSelect
                 __result = false;
                 return false;
             }
+
 
             if (curFocus == stageButtonsRND[0] && move.y == 0)
             {
@@ -444,6 +477,34 @@ namespace StageSelect
 
             __result = true;
             return false;
+        }
+
+        static bool stageHasBeenSelected = false;
+
+        [HarmonyPatch(typeof(ScreenPlayersStage), nameof(ScreenPlayersStage.SelectionDone))]
+        [HarmonyPostfix]
+        static void Method(ScreenPlayersStage __instance)
+        {
+            stageHasBeenSelected = true;
+            lbStageSize.SetText("");
+            __instance.StartCoroutine(LerpButtonToCenter(__instance, __instance.curIndex));
+        }
+
+        static IEnumerator LerpButtonToCenter(ScreenPlayersStage instance, int buttonIndex)
+        {
+            float dur = 0.1f;
+            Vector2 finalPos = new Vector2(2.5f, 12);
+            for (float f = 0f; f <= 1f;)
+            {
+                f += Time.deltaTime / dur;
+
+                instance.Place(buttonIndex,
+                    Vector2.Lerp(instance.btStages[buttonIndex].posDefault, finalPos, f),
+                    Vector3.Lerp(SCALE_FACTOR * Vector3.one, instance.scaleBig, f));
+                yield return null;
+            }
+
+            yield break;
         }
 
     }
